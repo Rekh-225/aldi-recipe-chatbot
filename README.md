@@ -48,10 +48,22 @@ Then open:
 http://localhost:5173
 ```
 
+`npm run dev` starts both:
+
+- backend API proxy on `http://localhost:8787`
+- frontend Vite app on `http://localhost:5173`
+
 Optional environment file:
 
 ```bash
 cp .env.example .env
+```
+
+Backend-only API keys go in `.env`, not in frontend code:
+
+```txt
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=openai/gpt-4o-mini
 ```
 
 ## Current Build
@@ -68,3 +80,5 @@ The starter app includes:
 - Google Maps directions link
 - 9x9 route grid
 - optional n8n delivery quote hook
+- backend proxy for ALDI API calls
+- optional OpenRouter-backed recipe idea ranking

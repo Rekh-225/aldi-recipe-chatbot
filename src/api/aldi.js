@@ -1,5 +1,5 @@
 const ALDI_API_BASE_URL =
-  import.meta.env.VITE_ALDI_API_BASE_URL || "https://hackhaton.internal.zrcn.dev";
+  import.meta.env.VITE_BACKEND_API_BASE_URL || "";
 
 async function request(path) {
   const response = await fetch(`${ALDI_API_BASE_URL}${path}`);
@@ -15,6 +15,12 @@ export async function searchRecipes(query) {
   const params = query ? `?q=${encodeURIComponent(query)}` : "";
   const data = await request(`/api/recipes${params}`);
   return data.recipes || [];
+}
+
+export async function getRecipeIdeas(query) {
+  const params = query ? `?q=${encodeURIComponent(query)}` : "";
+  const data = await request(`/api/recipe-ideas${params}`);
+  return data.ideas || [];
 }
 
 export async function getRecipe(recipeId, portions, excludePantry) {
