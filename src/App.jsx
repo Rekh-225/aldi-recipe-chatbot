@@ -16,6 +16,7 @@ import {
   Truck
 } from "lucide-react";
 import {
+  getRecipeIdeas,
   getRecipe,
   getRoutePlan,
   getStoreGrid,
@@ -91,6 +92,7 @@ function getSkippedHomeIngredients(recipeDetail, homeIngredients) {
 function App() {
   const [query, setQuery] = useState(DEFAULT_QUERY);
   const [recipes, setRecipes] = useState([]);
+  const [recipeIdeas, setRecipeIdeas] = useState([]);
   const [selectedRecipe, setSelectedRecipe] = useState(null);
   const [recipeDetail, setRecipeDetail] = useState(null);
   const [portions, setPortions] = useState(4);
@@ -159,8 +161,19 @@ function App() {
   }
 
   async function loadRecipes(nextQuery = query) {
-    const result = await withLoading("recipes", () => searchRecipes(nextQuery));
-    if (result) setRecipes(result);
+    const result = await withLoading("recipes", async () => {
+      const [recipeResults, ideaResults] = await Promise.all([
+        searchRecipes(nextQuery),
+        getRecipeIdeas(nextQuery).catch(() => [])
+      ]);
+
+      return { recipes: recipeResults, ideas: ideaResults };
+    });
+
+    if (result) {
+      setRecipes(result.recipes);
+      setRecipeIdeas(result.ideas);
+    }
   }
 
   async function loadStores() {
@@ -337,6 +350,7 @@ function App() {
               <PanelTitle icon={<ChefHat size={20} />} title="Recipe Options" />
               <RecipeList
                 recipes={recipes}
+                recipeIdeas={recipeIdeas}
                 selectedRecipe={selectedRecipe}
                 onChooseRecipe={chooseRecipe}
               />
@@ -444,13 +458,42 @@ function PanelTitle({ icon, title }) {
   );
 }
 
-function RecipeList({ recipes, selectedRecipe, onChooseRecipe }) {
+function RecipeList({ recipes, recipeIdeas, selectedRecipe, onChooseRecipe }) {
   if (!recipes.length) {
     return <p className="muted">No recipes yet. Search for a dish or ingredient.</p>;
   }
 
   return (
     <div className="recipe-list">
+      {recipeIdeas.length ? (
+        <div className="idea-box">
+          <strong>Backend recipe ideas</strong>
+          <p>Grounded in ALDI recipe data. OpenRouter can rank these if a backend key is configured.</p>
+          <div className="idea-list">
+            {recipeIdeas.map((idea) => (
+              <button
+                className="idea-chip"
+                key={`${idea.recipe_id}-${idea.recipe_name}`}
+                onClick={() =>
+                  onChooseRecipe({
+                    id: idea.recipe_id,
+                    name: idea.recipe_name,
+                    description: idea.reason,
+                    cuisine: "ALDI match",
+                    prep_minutes: 0,
+                    tags: ["backend", "grounded"]
+                  })
+                }
+                type="button"
+              >
+                <span>{idea.recipe_name}</span>
+                <small>{idea.reason}</small>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       {recipes.map((recipe) => (
         <button
           className={

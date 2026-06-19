@@ -276,6 +276,47 @@ a {
   gap: 10px;
 }
 
+.idea-box {
+  background: #f6f9fc;
+  border: 1px solid #dce6f2;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.idea-box p {
+  color: #637083;
+  margin: 0;
+}
+
+.idea-list {
+  display: grid;
+  gap: 8px;
+}
+
+.idea-chip {
+  align-items: flex-start;
+  background: #ffffff;
+  border: 1px solid #d9e2ec;
+  color: #17202a;
+  display: grid;
+  gap: 4px;
+  justify-content: stretch;
+  min-height: auto;
+  padding: 10px;
+  text-align: left;
+}
+
+.idea-chip span {
+  font-weight: 850;
+}
+
+.idea-chip small {
+  color: #637083;
+  line-height: 1.35;
+}
+
 .recipe-card {
   align-items: stretch;
   background: #ffffff;
