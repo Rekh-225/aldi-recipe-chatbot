@@ -34,22 +34,58 @@ function formatMoney(value) {
   }).format(value || 0);
 }
 
-function selectProduct(ingredient) {
+function normalizeText(value) {
+  return String(value || "").toLowerCase().trim();
+}
+
+function parseHomeIngredients(value) {
+  return String(value || "")
+    .split(",")
+    .map((item) => normalizeText(item))
+    .filter(Boolean);
+}
+
+function shouldSkipIngredient(ingredient, homeIngredients) {
+  if (!homeIngredients.length) return false;
+
+  const name = normalizeText(ingredient.name);
+  const key = normalizeText(ingredient.ingredient_key);
+
+  return homeIngredients.some((item) => name.includes(item) || key.includes(item));
+}
+
+function selectProduct(ingredient, productStrategy) {
+  const selectedId =
+    productStrategy === "cheapest"
+      ? ingredient.cheapest_option_id
+      : ingredient.max_profit_option_id;
+
   return ingredient.product_options?.find(
-    (option) => option.id === ingredient.max_profit_option_id
+    (option) => option.id === selectedId
   );
 }
 
-function buildBasket(recipeDetail) {
+function buildBasket(recipeDetail, productStrategy, homeIngredients) {
   if (!recipeDetail?.ingredients) return [];
 
   return recipeDetail.ingredients
     .filter((ingredient) => ingredient.include_in_shopping_list)
+    .filter((ingredient) => !shouldSkipIngredient(ingredient, homeIngredients))
     .map((ingredient) => ({
       ingredient,
-      product: selectProduct(ingredient)
+      product: selectProduct(ingredient, productStrategy)
     }))
     .filter((line) => line.product);
+}
+
+function getSkippedHomeIngredients(recipeDetail, homeIngredients) {
+  if (!recipeDetail?.ingredients) return [];
+
+  return recipeDetail.ingredients.filter(
+    (ingredient) =>
+      ingredient.include_in_shopping_list &&
+      shouldSkipIngredient(ingredient, homeIngredients)
+  );
 }
 
 function App() {
@@ -59,6 +95,8 @@ function App() {
   const [recipeDetail, setRecipeDetail] = useState(null);
   const [portions, setPortions] = useState(4);
   const [excludePantry, setExcludePantry] = useState(true);
+  const [ingredientsAtHomeText, setIngredientsAtHomeText] = useState("");
+  const [productStrategy, setProductStrategy] = useState("profit");
   const [stores, setStores] = useState([]);
   const [selectedStoreId, setSelectedStoreId] = useState("");
   const [storeGrid, setStoreGrid] = useState(null);
@@ -74,7 +112,18 @@ function App() {
   });
   const [error, setError] = useState("");
 
-  const basket = useMemo(() => buildBasket(recipeDetail), [recipeDetail]);
+  const homeIngredients = useMemo(
+    () => parseHomeIngredients(ingredientsAtHomeText),
+    [ingredientsAtHomeText]
+  );
+  const basket = useMemo(
+    () => buildBasket(recipeDetail, productStrategy, homeIngredients),
+    [recipeDetail, productStrategy, homeIngredients]
+  );
+  const skippedHomeIngredients = useMemo(
+    () => getSkippedHomeIngredients(recipeDetail, homeIngredients),
+    [recipeDetail, homeIngredients]
+  );
   const selectedStore = stores.find((store) => store.id === Number(selectedStoreId));
 
   const totals = useMemo(
@@ -301,6 +350,9 @@ function App() {
                 totals={totals}
                 portions={portions}
                 excludePantry={excludePantry}
+                productStrategy={productStrategy}
+                ingredientsAtHomeText={ingredientsAtHomeText}
+                skippedHomeIngredients={skippedHomeIngredients}
                 loading={loading.detail}
                 onChangePortions={(value) => {
                   setPortions(value);
@@ -310,6 +362,8 @@ function App() {
                   setExcludePantry(value);
                   refreshRecipeDetail(portions, value);
                 }}
+                onChangeProductStrategy={setProductStrategy}
+                onChangeIngredientsAtHome={setIngredientsAtHomeText}
               />
             </section>
 
@@ -327,6 +381,20 @@ function App() {
                 onSelectStore={setSelectedStoreId}
                 onFindNearest={chooseNearestStore}
                 onLoadRoute={loadRoute}
+              />
+            </section>
+
+            <section className="panel">
+              <PanelTitle icon={<PackageCheck size={20} />} title="Final Summary" />
+              <FinalSummary
+                selectedRecipe={selectedRecipe}
+                portions={portions}
+                totals={totals}
+                basket={basket}
+                skippedHomeIngredients={skippedHomeIngredients}
+                selectedStore={selectedStore}
+                routePlan={routePlan}
+                productStrategy={productStrategy}
               />
             </section>
 
@@ -420,9 +488,14 @@ function BasketBuilder({
   totals,
   portions,
   excludePantry,
+  productStrategy,
+  ingredientsAtHomeText,
+  skippedHomeIngredients,
   loading,
   onChangePortions,
-  onChangeExcludePantry
+  onChangeExcludePantry,
+  onChangeProductStrategy,
+  onChangeIngredientsAtHome
 }) {
   if (loading) {
     return <LoadingBlock text="Building the ALDI basket..." />;
@@ -454,6 +527,39 @@ function BasketBuilder({
           Skip pantry staples
         </label>
       </div>
+
+      <div className="strategy-row" aria-label="Product strategy">
+        <button
+          className={productStrategy === "profit" ? "strategy active" : "strategy"}
+          onClick={() => onChangeProductStrategy("profit")}
+          type="button"
+        >
+          Best for ALDI
+        </button>
+        <button
+          className={productStrategy === "cheapest" ? "strategy active" : "strategy"}
+          onClick={() => onChangeProductStrategy("cheapest")}
+          type="button"
+        >
+          Cheapest for customer
+        </button>
+      </div>
+
+      <label>
+        Already have at home
+        <input
+          value={ingredientsAtHomeText}
+          onChange={(event) => onChangeIngredientsAtHome(event.target.value)}
+          placeholder="salt, pepper, olive oil"
+        />
+      </label>
+
+      {skippedHomeIngredients.length ? (
+        <div className="skipped-box">
+          <strong>Skipped from basket</strong>
+          <p>{skippedHomeIngredients.map((ingredient) => ingredient.name).join(", ")}</p>
+        </div>
+      ) : null}
 
       <div className="total-strip">
         <div>
@@ -544,10 +650,13 @@ function StoreRoute({
         </div>
 
         {routePlan ? (
-          <div className="route-summary">
-            <strong>{routePlan.total_steps} total steps</strong>
-            <p>{routePlan.stops.length} route stops including checkout</p>
-          </div>
+          <>
+            <div className="route-summary">
+              <strong>{routePlan.total_steps} total steps</strong>
+              <p>{routePlan.stops.length} route stops including checkout</p>
+            </div>
+            <RouteStopList stops={routePlan.stops} />
+          </>
         ) : (
           <p className="muted">Select a recipe and store, then build the route.</p>
         )}
@@ -556,6 +665,26 @@ function StoreRoute({
       <div>
         <RouteGrid grid={storeGrid} routePlan={routePlan} />
       </div>
+    </div>
+  );
+}
+
+function RouteStopList({ stops = [] }) {
+  if (!stops.length) return null;
+
+  return (
+    <div className="route-stops">
+      <strong>Pickup order</strong>
+      <ol>
+        {stops.map((stop) => (
+          <li key={`${stop.order}-${stop.x}-${stop.y}`}>
+            <span>{stop.label}</span>
+            <small>
+              Cell {stop.x},{stop.y} - {stop.steps_from_previous} step(s)
+            </small>
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }
@@ -599,6 +728,66 @@ function RouteGrid({ grid, routePlan }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function FinalSummary({
+  selectedRecipe,
+  portions,
+  totals,
+  basket,
+  skippedHomeIngredients,
+  selectedStore,
+  routePlan,
+  productStrategy
+}) {
+  if (!selectedRecipe) {
+    return <p className="muted">Select a recipe to generate the final demo summary.</p>;
+  }
+
+  return (
+    <div className="final-summary">
+      <div>
+        <span>Recipe</span>
+        <strong>{selectedRecipe.name}</strong>
+      </div>
+      <div>
+        <span>Portions</span>
+        <strong>{portions}</strong>
+      </div>
+      <div>
+        <span>Basket</span>
+        <strong>
+          {basket.length} items - {formatMoney(totals.price)}
+        </strong>
+      </div>
+      <div>
+        <span>ALDI margin</span>
+        <strong>{formatMoney(totals.margin)}</strong>
+      </div>
+      <div>
+        <span>Strategy</span>
+        <strong>
+          {productStrategy === "cheapest" ? "Cheapest for customer" : "Best for ALDI"}
+        </strong>
+      </div>
+      <div>
+        <span>Skipped</span>
+        <strong>
+          {skippedHomeIngredients.length
+            ? skippedHomeIngredients.map((ingredient) => ingredient.name).join(", ")
+            : "Pantry/home items only"}
+        </strong>
+      </div>
+      <div>
+        <span>Store</span>
+        <strong>{selectedStore?.name || "Choose store"}</strong>
+      </div>
+      <div>
+        <span>Route</span>
+        <strong>{routePlan ? `${routePlan.total_steps} steps to checkout` : "Not built yet"}</strong>
+      </div>
     </div>
   );
 }
