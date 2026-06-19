@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   Bot,
@@ -634,3 +634,4 @@ function LoadingBlock({ text }) {
 }
 
 export default App;
+
